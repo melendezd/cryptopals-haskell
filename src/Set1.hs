@@ -1,12 +1,15 @@
 module Set1 
-  ( hexToBase64,
+  ( fromHexWith,
+    hexToBase64,
     hexXor,
     singleByteXor,
-    decryptEnglishSingleByteXor
+    decryptEnglishSingleByteXor,
+    keyRepeatingXor
   )
 where
 
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Base64 as B64
@@ -105,6 +108,7 @@ decryptEnglishSingleByteXor :: B.ByteString -> String
 decryptEnglishSingleByteXor str 
     = minWith getNonenglishness $ map (BC.unpack . flip singleByteXor str) [0..255]
 
+
 --- Challenge 4: Detect single-byte XOR ---
 
 -- | Reads the lines from the list of ciphertexts given in Challenge Four into a list
@@ -114,6 +118,13 @@ getChallengeFourLines = (fmap BC.pack) . lines <$> readFile "res/4.txt"
 -- | Finds the least non-English plaintext out of a list of single-byte XOR ciphertexts
 findEnglishText :: [B.ByteString] -> String
 findEnglishText = minWith getNonenglishness . fmap (fromHexWith decryptEnglishSingleByteXor)
+
+
+--- Challenge 5: Implement key-repeating XOR ---
+
+keyRepeatingXor :: B.ByteString -> B.ByteString -> B.ByteString
+keyRepeatingXor key bstr = B.pack $ BL.zipWith xor (BL.fromStrict bstr) (BL.cycle . BL.fromStrict $ key)
+
 
 test :: IO ()
 test = withFile "res/4.txt" ReadMode (\handle -> (hGetContents handle) >>= putStrLn)
