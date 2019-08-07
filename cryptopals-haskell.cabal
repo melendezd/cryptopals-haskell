@@ -23,7 +23,8 @@ library
   build-depends:       base >= 4.7 && < 5, 
                        bytestring,
                        base16-bytestring,
-                       base64-bytestring
+                       base64-bytestring,
+                       ghc
   other-modules:       Paths_cryptopals_haskell
   exposed-modules:     Set1                       
 
