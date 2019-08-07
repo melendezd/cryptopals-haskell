@@ -3,7 +3,7 @@ version:             0.1.0.0
 -- synopsis: Solutions to the Cryptopals Crypto Challenges in Haskell
 -- description:
 homepage:            https://github.com/githubuser/cryptopals-haskell#readme
-license:             BSD3
+license:             MIT
 license-file:        LICENSE
 author:              David Melendez
 maintainer:          davidmelendez@knights.ucf.edu
