@@ -4,7 +4,12 @@ module Set1
     hexXor,
     singleByteXor,
     decryptEnglishSingleByteXor,
-    keyRepeatingXor
+    repeatingKeyXor,
+    hammingDistance,
+    findVigenereKeySize,
+    getChallengeSixText,
+    challengeSixNumBlocks,
+    challengeSixRange
   )
 where
 
@@ -20,6 +25,7 @@ import Data.Char
 import Util (minWith)
 import System.IO
 import Control.Applicative
+import Data.List (genericLength, transpose)
 
 ----- Useful utilities not specific to any challenge -----
 
@@ -38,6 +44,12 @@ onHex2 f bs1 bs2 = B16.encode $ f (unHex bs1) (unHex bs2)
 -- | Returns the raw bytestring.
 fromHexWith :: (B.ByteString -> a) -> B.ByteString -> a
 fromHexWith f = f . fst . B16.decode
+
+-- | Applies a raw bytestring function to a base64 bytestring.
+-- | Returns the raw bytestring.
+fromB64With :: (B.ByteString -> a) -> B.ByteString -> a
+fromB64With f = f . (fromRight B.empty) . B64.decode
+
 
 ----------------------------------------------------------
 ----------------------------------------------------------
@@ -66,7 +78,7 @@ hexXor = onHex2 (\str1 str2 -> B.pack $ B.zipWith xor str1 str2)
 -}
 
 englishAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-englishCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ,./<>?;':\"[]\\{}|`-=~!@#$%^&*()_+"
+englishCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ,./<>?;':\"[]\\{}|`-=~!@#$%^&*()_+\n"
 
 -- | The sample code give in Challenge 3
 challengeThreeCode :: B.ByteString
@@ -95,7 +107,7 @@ englishAlphaFrequencies = fmap (/100) [8.167, 1.492, 2.782, 4.253, 12.702, 2.228
 -- | Intresting tidbit: L2 (Euclidean) distance did not solve the challenge, but L1 distance did
 getNonenglishness :: (Floating r) => String -> r
 getNonenglishness str = sum (zipWith (\x y -> abs (x-y)) (getAlphaFrequencies str) englishAlphaFrequencies)
-    + 0.5 * fromIntegral (length (filter (not . (`elem` englishCharacters)) str) )
+     + 0.5 * fromIntegral (length (filter (not . (`elem` englishCharacters)) str) )
 
 -- | (Hopefully) Decrypts an English message encrypted with a single-byte XOR
 -- | Method: Performs a single-byte XOR on the ciphertext bytestring with every possible byte,
@@ -108,6 +120,9 @@ decryptEnglishSingleByteXor :: B.ByteString -> String
 decryptEnglishSingleByteXor str 
     = minWith getNonenglishness $ map (BC.unpack . flip singleByteXor str) [0..255]
 
+findEnglishSingleByteXorKey :: B.ByteString -> Word8
+findEnglishSingleByteXorKey bStr = 
+    minWith (getNonenglishness . BC.unpack . flip singleByteXor bStr) [0..255]
 
 --- Challenge 4: Detect single-byte XOR ---
 
@@ -120,12 +135,89 @@ findEnglishText :: [B.ByteString] -> String
 findEnglishText = minWith getNonenglishness . fmap (fromHexWith decryptEnglishSingleByteXor)
 
 
---- Challenge 5: Implement key-repeating XOR ---
+--- Challenge 5: Implement repeating-key XOR ---
 
-keyRepeatingXor :: B.ByteString -> B.ByteString -> B.ByteString
-keyRepeatingXor key bstr = B.pack $ BL.zipWith xor (BL.fromStrict bstr) (BL.cycle . BL.fromStrict $ key)
+-- | Encrypts a bytestring with repeating-key xor
+repeatingKeyXor :: B.ByteString -> B.ByteString -> B.ByteString
+repeatingKeyXor key bstr = B.pack $ BL.zipWith xor (BL.fromStrict bstr) (BL.cycle . BL.fromStrict $ key)
 
 
-test :: IO ()
-test = withFile "res/4.txt" ReadMode (\handle -> (hGetContents handle) >>= putStrLn)
+--- Challenge 6: Break repeating-key XOR ---
+
+-- | Computes the hamming/edit distance between two bytes, i.e. the number of differing bits
+hammingDistanceByte :: Word8 -> Word8 -> Int
+hammingDistanceByte byte1 byte2 = popCount (byte1 `xor` byte2)
+
+-- | Computes the hamming/edit distance between two bytestrings, i.e. the number of differing bits
+hammingDistance :: B.ByteString -> B.ByteString -> Int
+hammingDistance bstr1 bstr2 = sum $ B.zipWith (hammingDistanceByte) bstr1 bstr2
+
+-- | Splits a bytestring into a list of length-blockSize bytestrings
+splitBlocks :: Int -> B.ByteString -> [B.ByteString]
+splitBlocks blockSize = takeWhile (not . B.null) . map (B.take blockSize) . (iterate (B.drop blockSize))
+
+-- | Splits a bytestring into numBlocks blocks of length keySize.
+--   Computes the normalized edit distance between the first block and each of 
+--   the following blocks, and averages them together.
+normalizedBlockEditDistance :: (Fractional r) => Int -> Int -> B.ByteString -> r
+normalizedBlockEditDistance keySize numBlocks bstr = mean normalizedEditDistances
+    where 
+        allBlocks :: [B.ByteString]
+        allBlocks = splitBlocks keySize bstr
+
+        blocks :: [B.ByteString]
+        blocks = take numBlocks allBlocks
+
+        headBlock :: B.ByteString
+        headBlock = head blocks
+
+        tailBlocks :: [B.ByteString]
+        tailBlocks = tail blocks
+
+        normalizedEditDistances :: (Fractional r0) => [r0]
+        normalizedEditDistances = map ((/ (fromIntegral keySize)) . fromIntegral . hammingDistance headBlock) tailBlocks
+
+        mean :: (Fractional r0) => [r0] -> r0
+        mean list = (sum list) / (genericLength list)
+
+-- | Reads the encrypted text given in Challenge 6 (res/6.txt) and decodes it into
+--   a bytstring
+getChallengeSixText :: IO BC.ByteString
+getChallengeSixText = fromB64With id . BC.filter (/='\n') <$> BC.readFile "res/6.txt"
+
+-- | Finds the block (key) size which yields the smallest mean normalized edit distance between
+--   the first numBlocks blocks in the given bytestring
+--   Note: For the range [2..40], this did not return the correct key size for the Challenge 6
+--   text for numBlocks < 9.
+findVigenereKeySize :: Int -> [Int] -> B.ByteString -> Int
+findVigenereKeySize numBlocks range bStr = minWith 
+    (\ks -> normalizedBlockEditDistance ks numBlocks bStr) range
+
+challengeSixRange :: (Integral i) => [i]
+challengeSixRange = [2..40]
+
+challengeSixNumBlocks :: (Integral i) => i
+challengeSixNumBlocks = 9
+
+-- | Finds the key for a repeating-key XOR English ciphertext given the key size
+findVigenereKey :: Int -> B.ByteString -> B.ByteString
+findVigenereKey keySize bStr  = key
+    where
+        bStrBlocks = splitBlocks keySize bStr
+        bStrT = fmap B.pack . transpose . fmap B.unpack $ bStrBlocks
+        keyBytes = fmap (\j -> findEnglishSingleByteXorKey (bStrT !! j)) [0..(keySize-1)]
+        key = B.pack keyBytes
+
+
+
+
+
+
+
+
+
+
+
+
+
 
