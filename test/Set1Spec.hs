@@ -4,6 +4,7 @@ import Test.Hspec
 import Set1
 import qualified Data.ByteString.Char8 as BC
 import Data.Char
+import Control.Monad.IO.Class
 
 spec :: Spec
 spec = describe "Set1" $ do
@@ -33,8 +34,17 @@ spec = describe "Set1" $ do
             mapM_ (uncurry shouldBe) 
                 [(map toUpper . filter isAlpha . decryptEnglishSingleByteXor . (singleByteXor k) $ bs2
                         , str2') | k <- [0..255]]
-    describe "keyRepeatingXor" $ do
+    describe "repeatingKeyXor" $ do
         it "Encrypts a bytestring using key-repeating XOR" $ do
             let plain = BC.pack "Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal"
             let cipher = fromHexWith id $ BC.pack "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
-            keyRepeatingXor (BC.pack "ICE") plain `shouldBe` cipher
+            repeatingKeyXor (BC.pack "ICE") plain `shouldBe` cipher
+    describe "hammingDistance" $ do
+        it "Computes the number of differing bits in two bitstrings" $ do
+            let bstr1 = BC.pack "this is a test"
+            let bstr2 = BC.pack "wokka wokka!!!"
+            hammingDistance bstr1 bstr2 `shouldBe` 37
+    describe "findVigenereKeySize" $ do
+        it "Finds (probably) the repeating-key XOR keysize for a given bytestring encrypted with a repeating-key XOR cipher" $ do
+            txt <- liftIO getChallengeSixText
+            findVigenereKeySize challengeSixNumBlocks challengeSixRange txt `shouldBe` 29
